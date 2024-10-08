@@ -8,12 +8,16 @@ import (
 
 var logger atomic.Pointer[zap.SugaredLogger]
 
+func SetLogger(l *zap.SugaredLogger) {
+	logger.Store(l)
+}
+
 func init() {
 	l, err := zap.NewDevelopment()
 	if err != nil {
 		panic(err)
 	}
-	logger.Store(l.Sugar())
+	SetLogger(l.Sugar())
 }
 
 func Logger() *zap.SugaredLogger {

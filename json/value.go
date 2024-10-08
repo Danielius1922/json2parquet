@@ -1,6 +1,9 @@
 package json
 
-import "encoding/json"
+import (
+	"encoding/base64"
+	"encoding/json"
+)
 
 func ToBool(value interface{}) (bool, bool) {
 	v, ok := value.(bool)
@@ -29,4 +32,25 @@ func ToFloat64(value interface{}) (float64, bool) {
 		return 0, false
 	}
 	return f, true
+}
+
+func ToString(value interface{}) (string, bool) {
+	v, ok := value.(string)
+	return v, ok
+}
+
+func IsBase64Encoded(data string) bool {
+	_, err := base64.StdEncoding.DecodeString(data)
+	return err == nil
+}
+
+func ToByteString(value interface{}) ([]byte, bool) {
+	s, ok := ToString(value)
+	if !ok {
+		return nil, false
+	}
+	if !IsBase64Encoded(s) {
+		return nil, false
+	}
+	return []byte(s), true
 }

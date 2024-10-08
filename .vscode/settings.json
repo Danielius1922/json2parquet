@@ -1,0 +1,11 @@
+{
+    "go.testFlags": [
+        "-race",
+        "-v",
+        "-cover",
+    ],
+    "go.testTimeout": "600s",
+    "go.buildFlags": [
+        // "-mod=vendor",
+    ],
+}

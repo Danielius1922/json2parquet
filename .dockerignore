@@ -1,0 +1,6 @@
+.git
+.vscode
+data
+tools
+# Dockerfile
+thermofisher
