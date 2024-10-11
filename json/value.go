@@ -3,6 +3,7 @@ package json
 import (
 	"encoding/base64"
 	"encoding/json"
+	"time"
 )
 
 func ToBool(value interface{}) (bool, bool) {
@@ -41,6 +42,23 @@ func ToString(value interface{}) (string, bool) {
 
 func IsBase64Encoded(data string) bool {
 	_, err := base64.StdEncoding.DecodeString(data)
+	return err == nil
+}
+
+func ToRFC3339ToTimestampNano(value interface{}) (int64, bool) {
+	s, ok := ToString(value)
+	if !ok {
+		return 0, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return 0, false
+	}
+	return t.UnixNano(), true
+}
+
+func IsRFC3339(data string) bool {
+	_, err := time.Parse(time.RFC3339, data)
 	return err == nil
 }
 

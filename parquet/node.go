@@ -62,6 +62,24 @@ func (lt LogicalType) String() string {
 	return lt.ToLogicalType().String()
 }
 
+// custom extensions
+type ExtendedType int
+
+const (
+	ExtendedTypeNone ExtendedType = iota
+	ExtendedTypeRFC3339
+)
+
+func (et ExtendedType) String() string {
+	switch et {
+	case ExtendedTypeNone:
+		return "NONE"
+	case ExtendedTypeRFC3339:
+		return "RFC3339"
+	}
+	return "UNKNOWN"
+}
+
 var ErrOpNotSupported = errors.New("not supported")
 
 type Node interface {
@@ -70,19 +88,22 @@ type Node interface {
 	GetRepetition() parquet.Repetition
 	SetRepetition(repetition parquet.Repetition)
 	GetLogicalType() LogicalType
+	GetExtendedType() ExtendedType
 
 	Print() string
 	Fields() ([]Node, error)
+	FieldByPath(name []string) Node
 	IsEqual(Node) bool
 
 	Node() (schema.Node, error)
 }
 
 type node struct {
-	name        string
-	typ         NodeType
-	repetition  parquet.Repetition
-	logicalType LogicalType
+	name         string
+	typ          NodeType
+	repetition   parquet.Repetition
+	logicalType  LogicalType
+	extendedType ExtendedType
 }
 
 func (bn *node) GetName() string {
@@ -109,16 +130,33 @@ func (bn *node) SetLogicalType(LogicalType) error {
 	return ErrOpNotSupported
 }
 
+func (bn *node) GetExtendedType() ExtendedType {
+	return bn.extendedType
+}
+
+func (bn *node) FieldByPath(path []string) Node {
+	if len(path) == 0 {
+		return bn
+	}
+	return nil
+}
+
 func (bn *node) Fields() ([]Node, error) {
 	return nil, ErrOpNotSupported
 }
 
 func (bn *node) Print() string {
-	return bn.name + ":" + bn.typ.String() + ":" + bn.logicalType.String()
+	return bn.name + ":" + bn.typ.String() + ":" + bn.logicalType.String() + ":" + bn.extendedType.String()
 }
 
 func (bn *node) IsEqual(n Node) bool {
-	return bn.GetType() == n.GetType() && bn.GetLogicalType() == n.GetLogicalType()
+	return bn.typ == n.GetType() &&
+		bn.logicalType == n.GetLogicalType() &&
+		bn.extendedType == n.GetExtendedType()
+}
+
+func (bn *node) Node() (schema.Node, error) {
+	return nil, ErrOpNotSupported
 }
 
 type TemporaryNode struct {
@@ -198,18 +236,23 @@ type ByteArrayNode struct {
 	node
 }
 
-func NewByteArrayNode(name string, repetition parquet.Repetition, logicalType LogicalType) *ByteArrayNode {
+func NewByteArrayNode(name string, repetition parquet.Repetition, logicalType LogicalType, extendedType ExtendedType) *ByteArrayNode {
 	return &ByteArrayNode{
 		node{
-			name:        name,
-			typ:         NodeTypeByteArray,
-			repetition:  repetition,
-			logicalType: logicalType,
+			name:         name,
+			typ:          NodeTypeByteArray,
+			repetition:   repetition,
+			logicalType:  logicalType,
+			extendedType: extendedType,
 		},
 	}
 }
 
 func (bn *ByteArrayNode) Node() (schema.Node, error) {
+	if bn.extendedType == ExtendedTypeRFC3339 {
+		return schema.NewPrimitiveNodeLogical(bn.name, bn.repetition,
+			schema.NewTimestampLogicalType(true, schema.TimeUnitNanos), parquet.Types.Int64, 0, -1)
+	}
 	if bn.logicalType == LogicalTypeUTF8 {
 		return schema.NewPrimitiveNodeLogical(bn.name, bn.repetition,
 			schema.StringLogicalType{}, parquet.Types.ByteArray, 0, -1)
@@ -252,6 +295,20 @@ func NewGroupNode(name string, repetition parquet.Repetition, fields []Node, log
 		},
 		fields: fields,
 	}
+}
+
+func (gn *GroupNode) FieldByPath(path []string) Node {
+	if path == nil {
+		return gn
+	}
+	name := path[0]
+	remainder := path[1:]
+	for _, f := range gn.fields {
+		if f.GetName() == name {
+			return f.FieldByPath(remainder)
+		}
+	}
+	return nil
 }
 
 func (gn *GroupNode) Fields() ([]Node, error) {
@@ -346,4 +403,8 @@ func NewListNode(name string, repetition parquet.Repetition, element Node) *List
 
 func (ln *ListNode) Element() Node {
 	return ln.fields[0]
+}
+
+func (ln *ListNode) SetElement(element Node) {
+	ln.fields[0] = element
 }

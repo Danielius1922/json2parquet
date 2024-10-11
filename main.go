@@ -88,11 +88,12 @@ func main() {
 		log.Fatalf("failed to infer parquet schema from JSON data: %v", err)
 	}
 
-	schema, err := sb.Schema()
+	sc := sb.Schema()
+	sc2, err := sc.Schema()
 	if err != nil {
 		log.Fatalf("failed to build parquet schema: %v", err)
 	}
-	pqSchema.PrintSchema(schema.Root(), os.Stdout, 2)
+	pqSchema.PrintSchema(sc2.Root(), os.Stdout, 2)
 	fmt.Println()
 
 	if inferOnly {
@@ -106,7 +107,7 @@ func main() {
 	}
 	reader.SetSkipNestedObjects(true)
 
-	wr, err := parquet.NewWriter(output, batchSize, schema)
+	wr, err := parquet.NewWriter(output, batchSize, sc)
 	if err != nil {
 		log.Fatalf("failed to create parquet file write: %v", err)
 	}

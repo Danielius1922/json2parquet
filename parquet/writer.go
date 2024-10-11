@@ -7,7 +7,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/parquet"
 	"github.com/apache/arrow-go/v18/parquet/file"
-	"github.com/apache/arrow-go/v18/parquet/schema"
 	tfJson "github.com/thermofisher/json2parquet/json"
 	"github.com/thermofisher/json2parquet/log"
 )
@@ -15,17 +14,23 @@ import (
 type Writer struct {
 	writer *file.Writer
 
+	schema    *Schema
 	batch     []map[string]interface{}
 	batchSize uint
 }
 
-func NewWriter(path string, batchSize uint, sc *schema.Schema) (*Writer, error) {
+func NewWriter(path string, batchSize uint, sc *Schema) (*Writer, error) {
 	out, err := os.Create(path)
 	if err != nil {
 		return nil, err
 	}
+	pqSc, err := sc.Schema()
+	if err != nil {
+		return nil, err
+	}
 	return &Writer{
-		writer:    file.NewParquetWriter(out, sc.Root()),
+		writer:    file.NewParquetWriter(out, pqSc.Root()),
+		schema:    sc,
 		batchSize: batchSize,
 	}, nil
 }
@@ -80,14 +85,20 @@ func writeArrayColumn[T any](row map[string]interface{}, cw file.ColumnChunkWrit
 		return nil, nil, nil, errors.New("nested elements are not supported")
 	}
 	rep := cw.Descr().SchemaNode().RepetitionType()
-	repLevel := cw.LevelInfo().RepLevel
+	defLevel := cw.LevelInfo().DefLevel
 	name := parent.Name()
 	value, ok := row[name]
 	if !ok {
 		if rep == parquet.Repetitions.Required {
 			return nil, nil, nil, fmt.Errorf("missing required column(%v)", name)
 		}
-		return nil, []int16{repLevel - 1}, []int16{0}, nil
+		// missing at current level
+		curDefLevel := defLevel - 1
+		if rep == parquet.Repetitions.Repeated {
+			// missing at the parent level
+			curDefLevel = defLevel - 2
+		}
+		return nil, []int16{curDefLevel}, []int16{0}, nil
 	}
 	values, ok := value.([]interface{})
 	if !ok {
@@ -95,14 +106,11 @@ func writeArrayColumn[T any](row map[string]interface{}, cw file.ColumnChunkWrit
 	}
 	if len(values) == 0 {
 		// missing at current level
-		curReplevel := repLevel
-		if rep == parquet.Repetitions.Required {
-			curReplevel = repLevel - 1
-		}
-		return nil, []int16{curReplevel}, []int16{0}, nil
+		return nil, []int16{defLevel - 1}, []int16{0}, nil
 	}
 
 	array := make([]T, len(values))
+	repLevel := cw.LevelInfo().RepLevel
 	defLevels := make([]int16, len(values))
 	repLevels := make([]int16, len(values))
 	for i, v := range values {
@@ -137,7 +145,12 @@ func (w *Writer) writeBoolArrayColumn(cw *file.BooleanColumnChunkWriter) error {
 }
 
 func (w *Writer) writeInt64Column(cw *file.Int64ColumnChunkWriter) error {
-	values, defLevels, repLevels, err := writeSingleColumn[int64](w, cw, tfJson.ToInt64)
+	convert := tfJson.ToInt64
+	field := w.schema.FieldByPath(cw.Descr().ColumnPath())
+	if field.GetType() == NodeTypeByteArray && field.GetExtendedType() == ExtendedTypeRFC3339 {
+		convert = tfJson.ToRFC3339ToTimestampNano
+	}
+	values, defLevels, repLevels, err := writeSingleColumn[int64](w, cw, convert)
 	if err != nil {
 		return err
 	}
@@ -146,8 +159,13 @@ func (w *Writer) writeInt64Column(cw *file.Int64ColumnChunkWriter) error {
 }
 
 func (w *Writer) writeInt64ArrayColumn(cw *file.Int64ColumnChunkWriter) error {
+	convert := tfJson.ToInt64
+	field := w.schema.FieldByPath(cw.Descr().ColumnPath())
+	if field.GetType() == NodeTypeByteArray && field.GetExtendedType() == ExtendedTypeRFC3339 {
+		convert = tfJson.ToRFC3339ToTimestampNano
+	}
 	for _, row := range w.batch {
-		int64Array, defLevels, repLevels, err := writeArrayColumn[int64](row, cw, tfJson.ToInt64)
+		int64Array, defLevels, repLevels, err := writeArrayColumn[int64](row, cw, convert)
 		if err != nil {
 			return err
 		}

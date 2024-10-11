@@ -11,11 +11,13 @@ integer                           |   int64
 floating point number             |   float64
 base64 encoded string             |   byte array
 string                            |   byte array (with string logical type)
+RFC3339 date string               |   byte array (with custom RFC3339 type)
 array of booleans                 |   list of repeated booleans
 array of integers                 |   list of repeated int64s
 array of floating point integers  |   list of float64s
 array of base64 encoded strings   |   list of byte arrays
 array of strings                  |   list of byte arrays (with string logical type)
+array of RFC3339 strings          |   list of byte arrays (with custom RFC3339 type)
 
 Nested objects are not supported.
 
@@ -42,6 +44,3 @@ golangci-lint run  --timeout 5m
 
 go test -race -v  -cover -coverpkg=./... -covermode=atomic ./...
 
-## TODO
-
-- datetime
