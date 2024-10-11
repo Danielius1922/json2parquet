@@ -124,4 +124,6 @@ func main() {
 		wr.Close()
 		log.Fatalf("failed to infer parquet schema from JSON data: %v", err) //nolint:gocritic
 	}
+
+	fmt.Println("Success!")
 }
